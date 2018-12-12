@@ -19,8 +19,8 @@ import (
 var (
 	fileName   = flag.String("name", "module", "output filename. if '--name=output' specified, generated output-wasm.js and output.wasm")
 	compressed = flag.Bool("compressed", false, "use gzip compress for wasm file")
-	src        = flag.String("src", ".", "")
-	dst        = flag.String("dst", ".", "generate target directory name")
+	src        = flag.String("src", ".", "generate src directory")
+	dst        = flag.String("dst", ".", "generate target directory")
 )
 
 func validateOption() error {
@@ -28,20 +28,43 @@ func validateOption() error {
 		flag.PrintDefaults()
 		return errors.New("required --name option")
 	}
-	if src == nil {
-		flag.PrintDefaults()
-		return errors.New("required --src option")
-	}
-	if dst == nil {
-		flag.PrintDefaults()
-		return errors.New("required --dst option")
-	}
 	return nil
 }
 
-func runBuildCommand(cwd string, args []string) error {
+type wasmBuilder struct {
+	fileName   string
+	src        string
+	dst        string
+	cwd        string
+	compressed bool
+}
+
+func newWasmBuilder(fileName, src, dst string, compressed bool) (*wasmBuilder, error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, err
+	}
+	return &wasmBuilder{
+		fileName:   fileName,
+		src:        src,
+		dst:        dst,
+		cwd:        cwd,
+		compressed: compressed,
+	}, nil
+}
+
+func (b *wasmBuilder) command(args ...string) *exec.Cmd {
 	cmd := exec.Command(args[0], args[1:]...)
-	cmd.Dir = cwd
+	cmd.Dir = b.cwd
+	return cmd
+}
+
+func (b *wasmBuilder) runBuildCommand(args []string) error {
+	log.Println("- run build command")
+	if len(args) == 0 {
+		return errors.New("required build command")
+	}
+	cmd := b.command(args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return err
@@ -57,40 +80,37 @@ func runBuildCommand(cwd string, args []string) error {
 	return nil
 }
 
-func wasmFilePath(cwd string) string {
-	return filepath.Join(cwd, *src, *fileName+".wasm")
+func (b *wasmBuilder) wasmFilePath() string {
+	return filepath.Join(b.cwd, b.src, b.fileName+".wasm")
 }
 
-func wastFilePath(cwd string) string {
-	return filepath.Join(cwd, *src, *fileName+".wast")
+func (b *wasmBuilder) wastFilePath() string {
+	return filepath.Join(b.cwd, b.src, b.fileName+".wast")
 }
 
-func runWasm2Wat(cwd string) error {
-	cmd := exec.Command("wasm2wat", wasmFilePath(cwd), "-o", wastFilePath(cwd))
-	cmd.Dir = cwd
-	return cmd.Run()
+func (b *wasmBuilder) runWasm2Wat() error {
+	log.Println("- run wasm2wat")
+	return b.command("wasm2wat", b.wasmFilePath(), "-o", b.wastFilePath()).Run()
 }
 
-func replaceWasmInitialPageNumber(cwd string) error {
-	cmd := exec.Command(
+func (b *wasmBuilder) runWat2Wasm() error {
+	log.Println("- run wat2wasm")
+	return b.command("wat2wasm", b.wastFilePath(), "-o", b.wasmFilePath()).Run()
+}
+
+func (b *wasmBuilder) replaceWasmInitialPageNumber() error {
+	log.Println("- replace wasm initial page number")
+	return b.command(
 		"sed",
 		"-i",
 		"-e",
 		`s/(import "env" "memory" (memory (;0;) 256))/(import "env" "memory" (memory (;0;) 1))/`,
-		wastFilePath(cwd),
-	)
-	cmd.Dir = cwd
-	return cmd.Run()
+		b.wastFilePath(),
+	).Run()
 }
 
-func runWat2Wasm(cwd string) error {
-	cmd := exec.Command("wat2wasm", wastFilePath(cwd), "-o", wasmFilePath(cwd))
-	cmd.Dir = cwd
-	return cmd.Run()
-}
-
-func createWasmVersion(cwd string) (string, error) {
-	wasmFilePath := filepath.Join(cwd, *src, *fileName+".wasm")
+func (b *wasmBuilder) wasmVersion() (string, error) {
+	wasmFilePath := filepath.Join(b.cwd, b.src, b.fileName+".wasm")
 	bytes, err := ioutil.ReadFile(wasmFilePath)
 	if err != nil {
 		return "", err
@@ -98,8 +118,13 @@ func createWasmVersion(cwd string) (string, error) {
 	return fmt.Sprintf("%x", md5.Sum(bytes)), nil
 }
 
-func compressWasmFile(cwd string) error {
-	file, err := ioutil.ReadFile(wasmFilePath(cwd))
+func (b *wasmBuilder) compressWasmFile() error {
+	if !b.compressed {
+		return nil
+	}
+
+	log.Println("- compress wasm")
+	file, err := ioutil.ReadFile(b.wasmFilePath())
 	if err != nil {
 		return err
 	}
@@ -113,58 +138,27 @@ func compressWasmFile(cwd string) error {
 		return err
 	}
 
-	return ioutil.WriteFile(wasmFilePath(cwd), buf.Bytes(), 0644)
+	return ioutil.WriteFile(b.wasmFilePath(), buf.Bytes(), 0644)
 }
 
-func _main(args []string) error {
-	if err := validateOption(); err != nil {
-		return err
-	}
-	cwd, err := os.Getwd()
-	if err != nil {
-		return err
-	}
-	log.Println("- run build command")
-	if err := runBuildCommand(cwd, args); err != nil {
-		return err
-	}
-	log.Println("- get wasm version")
-	version, err := createWasmVersion(cwd)
-	if err != nil {
-		return err
-	}
-	log.Println("- run wasm2wat")
-	if err := runWasm2Wat(cwd); err != nil {
-		return err
-	}
-	log.Println("- replace wasm initial page number")
-	if err := replaceWasmInitialPageNumber(cwd); err != nil {
-		return err
-	}
-	log.Println("- run wat2wasm")
-	if err := runWat2Wasm(cwd); err != nil {
-		return err
-	}
-
-	if *compressed {
-		log.Println("- compress wasm")
-		if err := compressWasmFile(cwd); err != nil {
-			return err
-		}
-	}
-
-	dstWasmPath := filepath.Join(cwd, *dst, *fileName+".wasm")
+func (b *wasmBuilder) putWasmFileToDstDirectory() error {
 	log.Println("- move wasm file to dst directory")
-	if err := os.Rename(wasmFilePath(cwd), dstWasmPath); err != nil {
-		return err
-	}
+	dstWasmPath := filepath.Join(b.cwd, b.dst, b.fileName+".wasm")
+	return os.Rename(b.wasmFilePath(), dstWasmPath)
+}
 
-	jsPath := filepath.Join(cwd, *src, *fileName+".js")
+func (b *wasmBuilder) putWasmHelperFileToDstDirectory() error {
+	log.Println("- output js file to dst directory")
+	jsPath := filepath.Join(b.cwd, b.src, b.fileName+".js")
 	jsContent, err := ioutil.ReadFile(jsPath)
 	if err != nil {
 		return err
 	}
 	tmpl, err := template.New("").Parse(string(jsContent))
+	if err != nil {
+		return err
+	}
+	version, err := b.wasmVersion()
 	if err != nil {
 		return err
 	}
@@ -180,18 +174,50 @@ func _main(args []string) error {
 		return err
 	}
 
-	log.Println("- output js file to dst directory")
-	dstJsPath := filepath.Join(cwd, *dst, *fileName+"-wasm.js")
-	if err := ioutil.WriteFile(dstJsPath, buf.Bytes(), 0644); err != nil {
+	dstJsPath := filepath.Join(b.cwd, b.dst, b.fileName+"-wasm.js")
+	return ioutil.WriteFile(dstJsPath, buf.Bytes(), 0644)
+}
+
+func (b *wasmBuilder) run(args []string) error {
+	if err := b.runBuildCommand(args); err != nil {
+		return err
+	}
+	if err := b.runWasm2Wat(); err != nil {
+		return err
+	}
+	if err := b.replaceWasmInitialPageNumber(); err != nil {
+		return err
+	}
+	if err := b.runWat2Wasm(); err != nil {
+		return err
+	}
+	if err := b.compressWasmFile(); err != nil {
+		return err
+	}
+	if err := b.putWasmFileToDstDirectory(); err != nil {
+		return err
+	}
+	if err := b.putWasmHelperFileToDstDirectory(); err != nil {
 		return err
 	}
 	return nil
 }
 
+func _main(args []string) error {
+	if err := validateOption(); err != nil {
+		return err
+	}
+	builder, err := newWasmBuilder(*fileName, *src, *dst, *compressed)
+	if err != nil {
+		return err
+	}
+	return builder.run(args)
+}
+
 func main() {
 	flag.Parse()
 	if err := _main(flag.Args()); err != nil {
-		log.Printf("%+v\n", err)
+		log.Printf("error: %+v\n", err)
 		os.Exit(1)
 	}
 	os.Exit(0)

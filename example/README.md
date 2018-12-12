@@ -48,7 +48,7 @@ Also, not waiting for loading of wasm file ( This is emscripten's problem )
 ```
 docker exec -it hello_wasm bash
 root@a854e422c351:/src# cd /example
-root@a854e422c351:/example# wasm-builder --name hello --src . --dst . -- \
+root@a854e422c351:/example# wasm-builder --name hello -- \
              em++ -Oz -std=c++11 \
              --closure 1 \
              --memory-init-file 0 \

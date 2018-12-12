@@ -17,7 +17,7 @@ Module['instantiateWasm'] = function(imports, successCallback) {
       wasmXHR.send(null);
     });
   };
-  return downloadWasm('{{ .Name }}.wasm?v={{ .Version }}').
+  return downloadWasm('/{{ .Name }}.wasm?v={{ .Version }}').
     then(function(wasmBinary) {
       return WebAssembly.instantiate(new Uint8Array(wasmBinary), imports).
         then(function(output) {

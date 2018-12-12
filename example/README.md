@@ -24,7 +24,6 @@ root@a854e422c351:/example# em++ -Oz -std=c++11 \
      -s ALLOW_MEMORY_GROWTH=1 \
      -s MODULARIZE=1 \
      -s NO_FILESYSTEM=1 \
-     --pre-js /src/emscripten/pre.js \
      --bind \
      hello.cc -o hello.js
 ```

@@ -1,0 +1,6 @@
+hello_wasm:
+  build: ../
+  container_name: 'hello_wasm'
+  command: tail -f /dev/null
+  volumes:
+    - ".:/example/"

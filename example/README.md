@@ -8,15 +8,14 @@ docker-compose up -d
 docker ps
 
 CONTAINER ID        IMAGE                          COMMAND                  CREATED             STATUS              PORTS                      NAMES
-a854e422c351        example_hello_wasm             "tail -f /dev/null"      18 minutes ago      Up 18 minutes                                  hello_wasm
+40585001c1c2        example_hello_wasm             "tail -f /dev/null"      1 minutes ago      Up 1 minutes                                  hello_wasm
 ```
 
 ## 2. Build hello.cc simply
 
 ```
 docker exec -it hello_wasm bash
-root@a854e422c351:/src# cd /example
-root@a854e422c351:/example# em++ -Oz -std=c++11 \
+root@40585001c1c2:/src/emscripten/example# em++ -Oz -std=c++11 \
      --closure 1 \
      --memory-init-file 0 \
      -fno-exceptions \
@@ -46,8 +45,7 @@ Also, not waiting for loading of wasm file ( This is emscripten's problem )
 
 ```
 docker exec -it hello_wasm bash
-root@a854e422c351:/src# cd /example
-root@a854e422c351:/example# wasm-builder --name hello -- \
+root@40585001c1c2:/src/emscripten/example# wasm-builder --name hello -- \
              em++ -Oz -std=c++11 \
              --closure 1 \
              --memory-init-file 0 \
@@ -74,3 +72,61 @@ Module().asm.then(function(module) { module.hello(); });
 ```
 
 This example works successfuly, also memory usage is **64KB** !! Congratulations !!
+
+## 4. Use wasm-loader.js
+
+### 4.1 Install dependencies
+
+( current working directory is /path/to/wasm/example )
+
+```
+$ npm install
+```
+
+or 
+
+```
+yarn install
+```
+
+### 4.2 Start Server
+
+```
+yarn server
+```
+
+the above command executes `webpack-dev-server --host 0.0.0.0 --progress --port 5000`
+
+### 4.3 Access Browser ( http://localhost:5000 )
+
+`webpack-dev-server` serve `index.html` .
+
+index.html
+```html
+<html>
+  <head>
+    <script src="module_loader.js"></script>
+  </head>
+  <body></body>
+</html>
+```
+
+`module_loader.js` is the following.
+
+```javascript
+import WasmLoader from '../dist/wasm-loader';
+
+const loader = new WasmLoader();
+loader.load(
+  () => import('./hello-wasm'),
+  () => import('./hello')
+).then(module => {
+  console.log('loaded module', module);
+  module.hello();
+});
+```
+
+This example use `wasm-loader.js` .  
+`wasm-loader.js` provides `WasmLoader` class and it provides `load` method only.  
+`load` method call dynamic import statement for loading wasm module.  
+First, `load` method try to call dynamic import callback for **`wasm`** module. But if your browser doesn't support to `WebAssembly` , `load` to call dynamic import callback for **`asm.js`** module.

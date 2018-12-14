@@ -2,5 +2,9 @@ hello_wasm:
   build: ../
   container_name: 'hello_wasm'
   command: tail -f /dev/null
+  working_dir: /src/emscripten/example
+  environment:
+    COLUMNS: 1000
+    LINES: 50
   volumes:
-    - ".:/example/"
+    - ".:/src/emscripten/example"

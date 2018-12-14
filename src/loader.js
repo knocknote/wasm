@@ -3,32 +3,37 @@ import WasmHelper from './helper';
 /**
  * @example
  * const loader = new WasmLoader();
- * loader.load(() => import('module_with_asmjs'), () => import('module_with_wasm'))
- *   .then(module => {
- *     // use module API
- *   });
+ * loader.load(
+ *   () => import('./hello-wasm'),
+ *   () => import('./hello')
+ * ).then(module => {
+ *   console.log('loaded module', module);
+ *   module.hello();
+ * });
  * @class WasmLoader
- */
+*/
 export default class WasmLoader {
   constructor() {
     this.helper = new WasmHelper();
   }
 
   /**
-   * Load Module from wasm file.
-   * If it cannot load from wasm, try to load from asm.js version
+   * Load call dynamic import statement for loading wasm module.  
+   * First, try to call dynamic import callback for **`wasm`** module. 
+   * But if your browser doesn't support to `WebAssembly`,
+   * this try to call dynamic import callback for **`asm.js`** module.
    *
    * @memberof WasmLoader
-   * @param {Promise} - dynamic imported value for asm.js
-   * @param {Promise} - dynamic imported value for wasm
+   * @param {Function} - returns Promise by dynamic import for wasm
+   * @param {Function} - returns Promise by dynamic import for asm.js
    * @return {Promise}
    */
-  load(asmjsImportCallback, wasmImportCallback) {
+  load(wasmImportCallback, asmjsImportCallback) {
     if (!this.helper.canUseWebAssembly()) {
       return this._loadFromAsmJS(asmjsImportCallback);
     }
 
-    return this._loadFromWasm(asmjsImportCallback, wasmImportCallback);
+    return this._loadFromWasm(wasmImportCallback, asmjsImportCallback);
   }
 
   static _loadFromAsmJS(asmjsImportCallback) {
@@ -43,7 +48,7 @@ export default class WasmLoader {
     });
   }
 
-  _loadFromWasm(asmjsImportCallback, wasmImportCallback) {
+  _loadFromWasm(wasmImportCallback, asmjsImportCallback) {
     if (!wasmImportCallback) {
       return Promise.reject(new Error('required callback for wasm'));
     }
